@@ -11,7 +11,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/join', (req, res) => {
-  const authUrl = `https://www.strava.com/oauth/authorize?client_id=${process.env.STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${process.env.REDIRECT_URI}&scope=read,activity:read_all,profile:read_all&approval_prompt=auto`;
+  const authUrl = `https://www.strava.com/oauth/authorize?client_id=${process.env.STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${process.env.STRAVA_REDIRECT_URI}&scope=read,activity:read_all,profile:read_all&approval_prompt=auto`;
   res.redirect(authUrl);
 });
 
