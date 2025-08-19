@@ -11,9 +11,16 @@ app.get('/', (req, res) => {
 });
 
 app.get('/join', (req, res) => {
-  const authUrl = `https://www.strava.com/oauth/authorize?client_id=${process.env.STRAVA_CLIENT_ID}&response_type=code&redirect_uri=https://strava-oauth-proxy.onrender.com/join-callback&scope=read,activity:read_all,profile:read_all&approval_prompt=auto`;
+  const authUrl = `https://www.strava.com/oauth/authorize?` +
+    `client_id=${process.env.STRAVA_CLIENT_ID}` +
+    `&response_type=code` +
+    `&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback` +
+    `&scope=read,activity:read_all,profile:read_all` +
+    `&approval_prompt=auto`;
+
   res.redirect(authUrl);
 });
+
 
 app.get('/join-callback', async (req, res) => {
   const code = req.query.code;
