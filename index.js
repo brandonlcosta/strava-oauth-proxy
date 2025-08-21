@@ -1,5 +1,7 @@
-// index.js
+// index.js — SacUltraCrew OAuth + Webhooks (Render)
+// -------------------------------------------------
 require('dotenv').config();
+
 const express = require('express');
 const axios = require('axios');
 const { google } = require('googleapis');
@@ -7,13 +9,19 @@ const { google } = require('googleapis');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ---------- Middleware ----------
+// ================================
+// Basic middleware
+// ================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ---------- Small in-memory queue ----------
+// ================================
+// Small in-memory queue
+// ================================
 const inboxQ = [];
 let queueBusy = false;
+
+setInterval(drainQueue, 3000);
 
 async function drainQueue() {
   if (queueBusy) return;
@@ -22,7 +30,7 @@ async function drainQueue() {
     while (inboxQ.length) {
       const evt = inboxQ.shift();
 
-      // 1) Always write raw payload to "inbox" for auditing
+      // 1) log every event to inbox
       await appendToSheet('inbox', [[
         new Date().toISOString(),
         evt.object_type || '',
@@ -32,12 +40,17 @@ async function drainQueue() {
         JSON.stringify(evt || {})
       ]]);
 
-      // 2) On brand-new activity, fetch + append to activities/segment_efforts
-      if (evt.object_type === 'activity' && evt.aspect_type === 'create') {
-        await processNewActivity(evt.object_id, evt.owner_id);
+      // 2) route by aspect
+      if (evt.object_type === 'activity') {
+        if (evt.aspect_type === 'create') {
+          await processNewActivity(evt.object_id, evt.owner_id);
+        } else if (evt.aspect_type === 'update') {
+          await processActivityUpdate(evt);
+        } else if (evt.aspect_type === 'delete') {
+          // optional: mark deleted, or let a periodic SafeSync handle it
+          console.log('[DELETE]', evt.object_id);
+        }
       }
-
-      // 3) (Optional) handle delete/update here later if you want
     }
   } catch (err) {
     console.error('[QUEUE ERROR]', err?.response?.data || err.message || err);
@@ -45,33 +58,40 @@ async function drainQueue() {
     queueBusy = false;
   }
 }
-setInterval(drainQueue, 3000);
 
-// ---------- Basic pages / health ----------
-app.get('/', (req, res) => {
-  res.send(`<h1>SacUltraCrew OAuth + Webhook</h1>
-  <p>Health: <a href="/health">/health</a></p>
-  <p>Join: <a href="/join">/join</a></p>
-  <p>Sheets ping: <a href="/debug/sheets-ping">/debug/sheets-ping</a></p>`);
+// ================================
+// Health + tiny landing
+// ================================
+app.get('/', (_req, res) => {
+  res.status(200).send(
+`<h1>SacUltraCrew OAuth + Webhook</h1>
+<p>Health: <a href="/health">/health</a></p>
+<p>Join: <a href="/join">/join</a></p>
+<p>Sheets ping: <a href="/debug/sheets-ping">/debug/sheets-ping</a></p>`
+  );
 });
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
-// ---------- OAuth: start ----------
-app.get('/join', (req, res) => {
-  const authUrl =
+// ================================
+// OAuth: start
+// ================================
+app.get('/join', (_req, res) => {
+  const url =
     `https://www.strava.com/oauth/authorize?` +
     `client_id=${process.env.STRAVA_CLIENT_ID}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}` +
     `&scope=read,activity:read_all,profile:read_all` +
     `&approval_prompt=auto`;
-  res.redirect(authUrl);
+  res.redirect(url);
 });
 
-// ---------- OAuth: callback ----------
+// ================================
+// OAuth: callback
+// ================================
 app.get('/join-callback', async (req, res) => {
   const code = req.query.code;
-  if (!code) return res.status(400).send('Missing code parameter.');
+  if (!code) return res.status(400).send('Missing code');
 
   try {
     const { data } = await axios.post('https://www.strava.com/oauth/token', {
@@ -89,16 +109,24 @@ app.get('/join-callback', async (req, res) => {
     } = data;
 
     await ensureTabWithHeaders('athletes', ['athlete_id','athlete_name','access_token','refresh_token','expires_at']);
-    await appendRows('athletes', [[ id, `${firstname} ${lastname}`, access_token, refresh_token, expires_at ]]);
+    await upsertAthleteRow({
+      athlete_id: id,
+      athlete_name: `${firstname} ${lastname}`,
+      access_token,
+      refresh_token,
+      expires_at
+    });
 
-    res.send(`<h2>✅ You're connected, ${firstname}!</h2><p>You can close this tab.</p>`);
+    res.status(200).send(`<h2>✅ You're connected, ${firstname}!</h2><p>You can close this tab.</p>`);
   } catch (err) {
     console.error('[OAUTH ERROR]', err?.response?.data || err.message);
     res.status(500).send('OAuth failed.');
   }
 });
 
-// ---------- Webhook verify (GET) ----------
+// ================================
+// Webhook: verify (GET)
+// ================================
 app.get('/webhook', (req, res) => {
   const mode = (req.query['hub.mode'] || '').trim();
   const provided = (req.query['hub.verify_token'] || '').trim();
@@ -112,31 +140,26 @@ app.get('/webhook', (req, res) => {
   return res.status(403).send('Verification failed.');
 });
 
-// ---------- Webhook events (POST) ----------
+// ================================
+// Webhook: events (POST)
+// ================================
 app.post('/webhook', async (req, res) => {
   try {
-    res.sendStatus(200); // ACK fast
+    // ACK immediately to stop Strava retries
+    res.sendStatus(200);
+
     const evt = req.body || {};
     console.log('[WEBHOOK]', evt);
     inboxQ.push(evt);
-        if (body.object_type === 'activity') {
-      if (body.aspect_type === 'create') {
-        processNewActivity(body.object_id, body.owner_id);
-      } else if (body.aspect_type === 'update') {
-        processActivityUpdate(body); // <-- add this line
-      } else if (body.aspect_type === 'delete') {
-        // optional: mark as deleted or handle later with SafeSync
-        console.log('[DELETE] activity', body.object_id);
-      }
-    }
-
   } catch (err) {
     console.error('[WEBHOOK ERROR]', err);
-    // still ACKed above to prevent retries
+    // we already ACKed
   }
 });
 
-// ---------- Debug routes ----------
+// ================================
+// Debug routes
+// ================================
 app.get('/debug/sheets-ping', async (_req, res) => {
   try {
     await appendToSheet('inbox', [[ new Date().toISOString(), 'diag', 'ping', '', '', 'hello from Render' ]]);
@@ -154,15 +177,18 @@ app.get('/debug/env', (_req, res) => {
     STRAVA_VERIFY_TOKEN_len: (process.env.STRAVA_VERIFY_TOKEN || '').trim().length,
     GOOGLE_PRIVATE_KEY_len: (process.env.GOOGLE_PRIVATE_KEY || '').trim().length,
     GOOGLE_SHEET_ID_masked: mask(process.env.GOOGLE_SHEET_ID || ''),
+    GOOGLE_SERVICE_EMAIL: process.env.GOOGLE_SERVICE_EMAIL || '(missing)',
     REDIRECT_URI: process.env.REDIRECT_URI || '(missing)'
   });
 });
 
-// ---------- Sheets: client + helpers ----------
+// ================================
+// Google Sheets client + helpers
+// ================================
 async function getSheetsClient() {
   const sheets = google.sheets('v4');
 
-  // Handle quotes + \n in private key
+  // Handle quotes + \n in private key from env
   let privateKey = process.env.GOOGLE_PRIVATE_KEY || '';
   if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
   privateKey = privateKey.replace(/\\n/g, '\n');
@@ -173,6 +199,7 @@ async function getSheetsClient() {
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   await jwt.authorize();
+
   return { sheets, jwt, spreadsheetId: process.env.GOOGLE_SHEET_ID };
 }
 
@@ -186,11 +213,10 @@ async function ensureTabWithHeaders(tabName, headers) {
       spreadsheetId,
       requestBody: { requests: [{ addSheet: { properties: { title: tabName } } }] }
     });
-    // write headers
     await sheets.spreadsheets.values.update({
       auth: jwt,
       spreadsheetId,
-      range: `${tabName}!A1:${String.fromCharCode(64 + headers.length)}1`,
+      range: `${tabName}!A1:${colToA1(headers.length)}1`,
       valueInputOption: 'RAW',
       requestBody: { values: [headers] }
     });
@@ -199,7 +225,6 @@ async function ensureTabWithHeaders(tabName, headers) {
 
 async function appendToSheet(tabName, values) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
-  // If it's the first write ever, create the tab with default headers
   if (tabName === 'inbox') {
     await ensureTabWithHeaders('inbox', ['ts','object_type','aspect_type','object_id','owner_id','raw_json']);
   }
@@ -226,6 +251,40 @@ async function appendRows(tabName, rows) {
   });
 }
 
+// Upsert athlete row by athlete_id (keeps sheet tidy)
+async function upsertAthleteRow({ athlete_id, athlete_name, access_token, refresh_token, expires_at }) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  await ensureTabWithHeaders('athletes', ['athlete_id','athlete_name','access_token','refresh_token','expires_at']);
+
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: 'athletes!A2:E',
+  }).catch(() => ({ data: { values: [] } }));
+
+  const rows = resp.data.values || [];
+  let foundIndex = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(athlete_id)) { foundIndex = i; break; }
+  }
+
+  if (foundIndex === -1) {
+    await appendRows('athletes', [[
+      athlete_id, athlete_name, access_token, refresh_token, expires_at
+    ]]);
+  } else {
+    const rowIndex = foundIndex + 2; // sheet row
+    await sheets.spreadsheets.values.update({
+      auth: jwt,
+      spreadsheetId,
+      range: `athletes!A${rowIndex}:E${rowIndex}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[ athlete_id, athlete_name, access_token, refresh_token, expires_at ]] }
+    });
+  }
+}
+
+// Read first column (A) as Set of strings, skip header
 async function readColumnA(tabName) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
   const resp = await sheets.spreadsheets.values.get({
@@ -237,23 +296,76 @@ async function readColumnA(tabName) {
   return new Set(rows);
 }
 
-async function getAthleteTokenFromSheet(athleteId) {
+// ================================
+// Auth helpers (refresh tokens)
+// ================================
+async function getAthleteAuth(athleteId) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
   const resp = await sheets.spreadsheets.values.get({
     auth: jwt,
     spreadsheetId,
     range: 'athletes!A2:E' // A:id, B:name, C:access, D:refresh, E:expires_at
   }).catch(() => ({ data: { values: [] } }));
+
   const rows = resp.data.values || [];
-  for (const r of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
     if (String(r[0]) === String(athleteId)) {
-      return { access_token: r[2], athlete_name: r[1] };
+      return {
+        rowIndex: i + 2,
+        athlete_name: r[1] || '',
+        access_token: r[2] || '',
+        refresh_token: r[3] || '',
+        expires_at: Number(r[4] || 0)
+      };
     }
   }
-  return { access_token: null, athlete_name: null };
+  return null;
 }
 
-// ---------- Mapping (matches your GAS schema) ----------
+async function writeAthleteTokens(rowIndex, access_token, refresh_token, expires_at) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  await sheets.spreadsheets.values.update({
+    auth: jwt,
+    spreadsheetId,
+    range: `athletes!C${rowIndex}:E${rowIndex}`, // C:access, D:refresh, E:expires_at
+    valueInputOption: 'RAW',
+    requestBody: { values: [[access_token, refresh_token, expires_at]] }
+  });
+}
+
+async function ensureFreshAccessToken(athleteId) {
+  const auth = await getAthleteAuth(athleteId);
+  if (!auth) {
+    console.warn('[AUTH] No athlete row for', athleteId);
+    return { access_token: null, athlete_name: null };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (auth.access_token && auth.expires_at && auth.expires_at - 60 > now) {
+    return { access_token: auth.access_token, athlete_name: auth.athlete_name };
+  }
+
+  // refresh
+  try {
+    const { data } = await axios.post('https://www.strava.com/oauth/token', {
+      client_id: process.env.STRAVA_CLIENT_ID,
+      client_secret: process.env.STRAVA_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+      refresh_token: auth.refresh_token
+    });
+
+    await writeAthleteTokens(auth.rowIndex, data.access_token, data.refresh_token, data.expires_at);
+    return { access_token: data.access_token, athlete_name: auth.athlete_name };
+  } catch (e) {
+    console.error('[TOKEN REFRESH ERROR]', e?.response?.data || e.message);
+    return { access_token: null, athlete_name: auth.athlete_name };
+  }
+}
+
+// ================================
+// Sheet schema + mappers
+// ================================
 const ACTIVITIES_HEADERS = [
   'activity_id','athlete_id','athlete_name','name','sport_type',
   'distance_m','moving_time_s','elapsed_time_s','total_elev_gain_m',
@@ -327,7 +439,7 @@ function mapActivityRow(athleteName, athleteId, a) {
     localHour,
     weekStart.toISOString().split('T')[0],
     month,
-    true // efforts_scanned (webhook path already scanned)
+    true // efforts scanned in webhook path
   ];
 }
 
@@ -362,7 +474,9 @@ function mapEffortRow(athleteId, act, e) {
   ];
 }
 
-// ---------- Process a "create" event: fetch + append ----------
+// ================================
+// Activity processors
+// ================================
 async function processNewActivity(objectId, ownerId) {
   try {
     await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
@@ -375,9 +489,9 @@ async function processNewActivity(objectId, ownerId) {
       return;
     }
 
-    const { access_token, athlete_name } = await getAthleteTokenFromSheet(ownerId);
+    const { access_token, athlete_name } = await ensureFreshAccessToken(ownerId);
     if (!access_token) {
-      console.warn('[NEW ACT] no access_token for owner', ownerId);
+      console.warn('[NEW ACT] no usable access_token for owner', ownerId);
       return;
     }
 
@@ -401,7 +515,41 @@ async function processNewActivity(objectId, ownerId) {
   }
 }
 
-// Convert numeric column index to A1 letter(s) (1->A, 27->AA)
+async function processActivityUpdate(evt) {
+  try {
+    const { object_id, owner_id } = evt;
+    await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
+
+    const { access_token, athlete_name } = await ensureFreshAccessToken(owner_id);
+    if (!access_token) {
+      console.warn('[UPDATE] no usable access_token for owner', owner_id);
+      return;
+    }
+
+    const act = await axios.get(
+      `https://www.strava.com/api/v3/activities/${object_id}?include_all_efforts=false`,
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    ).then(r => r.data);
+
+    const row = mapActivityRow(athlete_name, owner_id, act);
+    const rowIndex = await findActivityRowIndex(object_id);
+
+    if (!rowIndex) {
+      console.log('[UPDATE] activity not found, appending instead', object_id);
+      await appendRows('activities', [row]);
+      return;
+    }
+
+    await overwriteActivityRow(rowIndex, row);
+    console.log('[UPDATE] refreshed activity row', object_id, 'at row', rowIndex);
+  } catch (err) {
+    console.error('[UPDATE ERROR]', err?.response?.data || err.message || err);
+  }
+}
+
+// ================================
+// Sheet row locate/overwrite
+// ================================
 function colToA1(n) {
   let s = '';
   while (n > 0) {
@@ -412,79 +560,38 @@ function colToA1(n) {
   return s;
 }
 
-// Find the row index (2-based, skipping header) for a given activity_id in "activities"
 async function findActivityRowIndex(activityId) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
-  // Read id column A (skip header)
   const resp = await sheets.spreadsheets.values.get({
     auth: jwt,
     spreadsheetId,
     range: 'activities!A2:A'
   }).catch(() => ({ data: { values: [] } }));
+
   const vals = resp.data.values || [];
   for (let i = 0; i < vals.length; i++) {
     if (String(vals[i][0]) === String(activityId)) {
-      return i + 2; // row number in sheet
+      return i + 2; // actual sheet row
     }
   }
   return null;
 }
 
-// Update an entire row in activities (overwrite the row with mapped values)
 async function overwriteActivityRow(rowIndex, rowValues) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
-  const colCount = ACTIVITIES_HEADERS.length;
-  const endCol = colToA1(colCount);
-  const range = `activities!A${rowIndex}:${endCol}${rowIndex}`;
+  const endCol = colToA1(ACTIVITIES_HEADERS.length);
   await sheets.spreadsheets.values.update({
     auth: jwt,
     spreadsheetId,
-    range,
+    range: `activities!A${rowIndex}:${endCol}${rowIndex}`,
     valueInputOption: 'RAW',
     requestBody: { values: [rowValues] }
   });
 }
 
-// Handle aspect_type === 'update'
-async function processActivityUpdate(evt) {
-  try {
-    const { object_id, owner_id } = evt;
-    await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
-
-    // 1) get athlete token
-    const { access_token, athlete_name } = await getAthleteTokenFromSheet(owner_id);
-    if (!access_token) {
-      console.warn('[UPDATE] no access_token for owner', owner_id);
-      return;
-    }
-
-    // 2) fetch current activity (include efforts if you want to refresh those too)
-    const act = await axios.get(
-      `https://www.strava.com/api/v3/activities/${object_id}?include_all_efforts=false`,
-      { headers: { Authorization: `Bearer ${access_token}` } }
-    ).then(r => r.data);
-
-    // 3) map row in your schema
-    const row = mapActivityRow(athlete_name, owner_id, act);
-
-    // 4) locate row; if missing, append (maybe create occurred when service was asleep)
-    const rowIndex = await findActivityRowIndex(object_id);
-    if (!rowIndex) {
-      console.log('[UPDATE] activity not found, appending instead', object_id);
-      await appendRows('activities', [row]);
-      return;
-    }
-
-    // 5) overwrite existing row
-    await overwriteActivityRow(rowIndex, row);
-    console.log('[UPDATE] refreshed activity row', object_id, 'at row', rowIndex);
-  } catch (err) {
-    console.error('[UPDATE ERROR]', err?.response?.data || err.message || err);
-  }
-}
-
-
-// ---------- Start server ----------
+// ================================
+// Boot
+// ================================
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
