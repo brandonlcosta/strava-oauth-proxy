@@ -122,7 +122,7 @@ app.get('/join', (_req, res) => {
     }
     h1 {
       font-size: 32px;
-      margin: 12px 0;
+      margin: 16px 0;
     }
     p {
       margin: 12px 0;
@@ -156,7 +156,7 @@ app.get('/join', (_req, res) => {
 
   <section class="join">
     <h1>SUC Leaderboard</h1>
-    <p>Join the official Sacramento Ultra Crew Leaderboard.<br>Locally inspired challenges.<br>You can disconnect anytime.</p>
+    <p>Join the official Sacramento Ultra Crew Leaderboard.<br>Locally inspired challenges. Community and competition.<br>You can disconnect anytime.</p>
 
     <!-- Strava connect button -->
     <a class="strava-connect" 
@@ -254,7 +254,7 @@ app.get('/join-callback', async (req, res) => {
             }
             h1 {
             font-size: 28px;
-            margin: 12px 0;
+            margin: 16px 0;
             }
             .msg {
             font-size: 18px;
