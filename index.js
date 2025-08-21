@@ -156,7 +156,7 @@ app.get('/join', (_req, res) => {
 
   <section class="join">
     <h1>SUC Leaderboard</h1>
-    <p>Opt in to our community leaderboard and challenges. You can disconnect anytime.</p>
+    <p>Join the official Sacramento Ultra Crew Leaderboard.<br>Locally inspired challenges.<br>You can disconnect anytime.</p>
 
     <!-- Strava connect button -->
     <a class="strava-connect" 
