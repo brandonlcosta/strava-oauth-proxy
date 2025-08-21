@@ -122,7 +122,7 @@ app.get('/join', (_req, res) => {
     }
     h1 {
       font-size: 32px;
-      margin: 10px 0;
+      margin: 12px 0;
     }
     p {
       margin: 12px 0;
@@ -254,7 +254,7 @@ app.get('/join-callback', async (req, res) => {
             }
             h1 {
             font-size: 28px;
-            margin: 10px 0;
+            margin: 12px 0;
             }
             .msg {
             font-size: 18px;
