@@ -144,3 +144,14 @@ app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
 
+app.get('/debug/sheets-ping', async (req, res) => {
+  try {
+    await appendToSheet('inbox', [[
+      new Date().toISOString(), 'diag', 'ping', '', '', 'hello from Render'
+    ]]);
+    return res.status(200).send('OK: wrote a test row to inbox');
+  } catch (e) {
+    console.error('[DEBUG SHEETS PING ERROR]', e?.response?.data || e.message);
+    return res.status(500).send('ERROR: ' + (e?.response?.data?.error?.message || e.message));
+  }
+});
