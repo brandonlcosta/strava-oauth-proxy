@@ -191,74 +191,71 @@ app.get('/join-callback', async (req, res) => {
     });
 
 // --- SUCCESS PAGE (Roboto + SUC Logo + skull + Powered by Strava) ---
-const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Connected — SUC Leaderboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-  <style>
-    body {
-      font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      text-align: center;
-      margin: 48px;
-      color: #222;
-      background: #fff;
-    }
-    .logo {
-      max-width: 200px;
-      margin: 0 auto 16px;
-    }
-    .skull {
-      font-size: 64px;
-      margin-bottom: 16px;
-    }
-    h1 {
-      font-size: 28px;
-      margin: 10px 0;
-    }
-    .msg {
-      font-size: 18px;
-      margin: 18px auto;
-      max-width: 560px;
-      line-height: 1.55;
-    }
-    .powered-by {
-      margin-top: 40px;
-    }
-  </style>
-</head>
-<body>
-  <!-- SUC Logo -->
-  <img src="/assets/strava/SUC-logo-v2-black.jpg" alt="Sac Ultra Crew" class="logo">
-  
-  <!-- SUC Skull -->
-  <div class="skull">💀</div>
+    const html = `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <title>Connected — SUC Leaderboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+        <style>
+            body {
+            font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            text-align: center;
+            margin: 48px;
+            color: #222;
+            background: #fff;
+            }
+            .logo {
+            max-width: 200px;
+            margin: 0 auto 16px;
+            }
+            .skull {
+            font-size: 64px;
+            margin-bottom: 16px;
+            }
+            h1 {
+            font-size: 28px;
+            margin: 10px 0;
+            }
+            .msg {
+            font-size: 18px;
+            margin: 18px auto;
+            max-width: 560px;
+            line-height: 1.55;
+            }
+            .powered-by {
+            margin-top: 40px;
+            }
+        </style>
+        </head>
+        <body>
+        <!-- SUC Logo -->
+        <img src="/assets/strava/SUC-logo-v2-black.jpg" alt="Sac Ultra Crew" class="logo">
 
-  <h1>✅ You’re Connected!</h1>
-  <p class="msg">
-    Welcome to the <strong>SUC Leaderboard</strong>, ${firstname || 'runner'} 🏔<br>
-    Your runs will now sync automatically with our crew challenges.<br>
-    You can close this tab and get back to the grind.
-  </p>
+        <h1>✅ You’re Connected!</h1>
+        <p class="msg">
+            Welcome to the <strong>SUC Leaderboard</strong>, ${firstname || 'runner'} 🏔<br>
+            Your runs will now sync automatically with our crew challenges.<br>
+            You can close this tab and get back to the grind.
+        </p>
 
-  <footer class="powered-by">
-    <img
-      src="/assets/strava/powered_by_strava_orange@2x.png"
-      alt="Powered by Strava"
-      height="24">
-  </footer>
-</body>
-</html>`;
+        <footer class="powered-by">
+            <img
+            src="/assets/strava/powered_by_strava_orange@2x.png"
+            alt="Powered by Strava"
+            height="24">
+        </footer>
+        </body>
+        </html>`;
 
 
-    res.set('Content-Type', 'text/html; charset=utf-8').status(200).send(html);
-  } catch (err) {
-    console.error('[OAUTH ERROR]', err?.response?.data || err.message);
-    res.status(500).send('OAuth failed.');
-  }
-});
+        res.set('Content-Type', 'text/html; charset=utf-8').status(200).send(html);
+    } catch (err) {
+        console.error('[OAUTH ERROR]', err?.response?.data || err.message);
+        res.status(500).send('OAuth failed.');
+    }
+    });
 
 // ================================
 // Webhook: verify (GET)
