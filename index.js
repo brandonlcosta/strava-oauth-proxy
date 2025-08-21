@@ -1,10 +1,11 @@
-// index.js — SacUltraCrew OAuth + Webhooks (Render) with hard-delete
-// ------------------------------------------------------------------
+// index.js — SacUltraCrew OAuth + Webhooks (Render) with hard-delete + Strava-compliant imagery
+// ---------------------------------------------------------------------------------------------
 require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
 const { google } = require('googleapis');
+const path = require('path'); // <-- added
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -14,6 +15,26 @@ const port = process.env.PORT || 3000;
 // ================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static assets (host official Strava button + logos here)
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), {
+  maxAge: '7d',
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+  }
+}));
+
+// Small helper to build the Strava authorize URL (scopes: read,activity:read)
+function buildAuthorizeUrl() {
+  const params = new URLSearchParams({
+    client_id: process.env.STRAVA_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: process.env.REDIRECT_URI, // e.g. https://strava-oauth-proxy.onrender.com/join-callback
+    scope: 'read,activity:read',
+    approval_prompt: 'auto'
+  });
+  return `https://www.strava.com/oauth/authorize?${params.toString()}`;
+}
 
 // ================================
 // Small in-memory queue
@@ -71,17 +92,71 @@ app.get('/', (_req, res) => {
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 // ================================
-// OAuth: start
+// OAuth: Join Page (Strava-compliant imagery here)
 // ================================
 app.get('/join', (_req, res) => {
-  const url =
-    `https://www.strava.com/oauth/authorize?` +
-    `client_id=${process.env.STRAVA_CLIENT_ID}` +
-    `&response_type=code` +
-    `&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}` +
-    `&scope=read,activity:read_all,profile:read_all` +
-    `&approval_prompt=auto`;
-  res.redirect(url);
+  const authorizeUrl = buildAuthorizeUrl();
+
+  // Uses official assets you host under /public/assets/strava/
+  // Button height is 48px (or 96px @2x). Do not modify/recolor.
+  // Shows a minimal consent blurb + link to your privacy policy.
+  // Includes "Powered by Strava" logo (smaller and separate from your branding).
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SUC Leaderboard — Join</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; line-height: 1.45; color:#121212; }
+    .wrap { max-width: 740px; margin: 0 auto; }
+    .btn { display:inline-block; }
+    .consent { margin-top: 12px; font-size: 0.96rem; color:#333; }
+    .consent a { color:#111; text-decoration: underline; }
+    footer { margin-top: 24px; display:flex; align-items:center; gap:12px; }
+    .powered { opacity: .95; }
+    .note { margin-top: 18px; font-size: .9rem; color:#555; }
+    .view-on-strava { color:#FC5200; font-weight:600; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>SUC Leaderboard — Join</h1>
+    <p>Opt in to our <strong>non-commercial</strong> community leaderboard and challenges. You can disconnect anytime.</p>
+
+    <a class="btn" href="${authorizeUrl}">
+      <img
+        src="/assets/strava/btn_connect_with_strava_orange@1x.png"
+        srcset="/assets/strava/btn_connect_with_strava_orange@1x.png 1x,
+                /assets/strava/btn_connect_with_strava_orange@2x.png 2x"
+        alt="Connect with Strava" height="48">
+    </a>
+
+    <p class="consent">
+      By connecting, you agree to share your <strong>public Strava activity data</strong> (distance, time, elevation, and watched segment efforts)
+      with SUC Leaderboard for scoring. You can disconnect in Strava or request deletion at any time.
+      See our <a href="https://www.sacultracrew.com/leaderboard/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+    </p>
+
+    <footer>
+      <img class="powered" src="/assets/strava/powered_by_strava_orange@1x.png" alt="Powered by Strava" height="24">
+    </footer>
+
+    <p class="note">
+      Example data links required by Strava’s guidelines:
+      <a class="view-on-strava" href="https://www.strava.com/activities/15539182985" target="_blank" rel="noopener">View on Strava</a>
+    </p>
+  </div>
+</body>
+</html>`;
+  res.status(200).send(html);
+});
+
+// ================================
+// OAuth: start (kept as a clean redirect endpoint if you want to link directly)
+// ================================
+app.get('/authorize', (_req, res) => {
+  res.redirect(buildAuthorizeUrl());
 });
 
 // ================================
@@ -153,7 +228,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 // ================================
-/* Debug */
+// Debug
 // ================================
 app.get('/debug/sheets-ping', async (_req, res) => {
   try {
@@ -315,18 +390,6 @@ async function findRowIndicesByHeader(tabName, headerName, matchValue) {
     }
   }
   return matches;
-}
-
-// Read header row and return index (0-based) of a header name
-async function getHeaderIndex(tabName, headerName) {
-  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
-  const resp = await sheets.spreadsheets.values.get({
-    auth: jwt,
-    spreadsheetId,
-    range: `${tabName}!1:1`
-  });
-  const headers = (resp.data.values && resp.data.values[0]) || [];
-  return headers.findIndex(h => String(h).trim() === String(headerName).trim());
 }
 
 // Update a single cell by row index (1-based) and col index (0-based)
