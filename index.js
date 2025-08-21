@@ -104,43 +104,85 @@ app.get('/join', (_req, res) => {
   const html = `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="UTF-8">
   <title>SUC Leaderboard — Join</title>
+  <!-- Google Fonts: Roboto -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; line-height: 1.45; color:#121212; }
-    .wrap { max-width: 740px; margin: 0 auto; }
-    .btn { display:inline-block; }
-    .consent { margin-top: 12px; font-size: 0.96rem; color:#333; }
-    .consent a { color:#111; text-decoration: underline; }
-    footer { margin-top: 24px; display:flex; align-items:center; gap:12px; }
-    .powered { opacity: .95; }
-    .note { margin-top: 18px; font-size: .9rem; color:#555; }
-    .view-on-strava { color:#FC5200; font-weight:600; text-decoration: underline; }
+    body {
+      font-family: 'Roboto', sans-serif;
+      text-align: center;
+      margin: 50px;
+      color: #222;
+    }
+    .logo {
+      max-width: 200px;
+      margin: 0 auto 20px;
+      display: block;
+    }
+    h1 {
+      font-size: 32px;
+      margin: 10px 0;
+    }
+    p {
+      margin: 12px 0;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    .strava-connect img {
+      margin: 20px auto;
+      display: inline-block;
+    }
+    .consent {
+      max-width: 600px;
+      margin: 20px auto;
+      font-size: 14px;
+      color: #444;
+    }
+    .consent a {
+      color: #FC5200; /* Strava orange */
+      text-decoration: underline;
+      font-weight: 500;
+    }
+    .powered-by {
+      margin-top: 40px;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>SUC Leaderboard — Join</h1>
-    <p>Opt in to our <strong>non-commercial</strong> community leaderboard and challenges. You can disconnect anytime.</p>
 
-    <a class="btn" href="${authorizeUrl}">
-      <img
-        src="/assets/strava/btn_connect_with_strava_orange@1x.png"
+  <!-- SUC Logo -->
+  <img src="/assets/strava/SUC-logo-v2-black.jpg" alt="SUC Logo" class="logo">
+
+  <section class="join">
+    <h1>SUC Leaderboard</h1>
+    <p>Opt in to our community leaderboard and challenges. You can disconnect anytime.</p>
+
+    <!-- Strava connect button -->
+    <a class="strava-connect" 
+       href="https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback&scope=read,activity:read&approval_prompt=auto">
+      <img 
+        src="/assets/strava/btn_connect_with_strava_orange@1x.png" 
         srcset="/assets/strava/btn_connect_with_strava_orange@1x.png 1x,
                 /assets/strava/btn_connect_with_strava_orange@2x.png 2x"
         alt="Connect with Strava" height="48">
     </a>
 
     <p class="consent">
-      By connecting, you agree to share your <strong>public Strava activity data</strong> (distance, time, elevation, and watched segment efforts)
-      with SUC Leaderboard for scoring. You can disconnect in Strava or request deletion at any time.
-      See our <a href="https://www.sacultracrew.com/leaderboard/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+      By connecting, you agree to share your public Strava activity data with SUC Leaderboard 
+      for scoring (distance, time, elevation, and watched segment efforts). You can disconnect 
+      anytime in Strava or request deletion. See our 
+      <a href="/leaderboard/privacy">Privacy Policy</a>.
     </p>
+  </section>
 
-    <footer>
-      <img class="powered" src="/assets/strava/powered_by_strava_orange@1x.png" alt="Powered by Strava" height="24">
-    </footer>
+  <!-- Powered by Strava -->
+  <footer class="powered-by">
+    <img 
+      src="/assets/strava/powered_by_strava_orange@2x.png"
+      alt="Powered by Strava"
+      height="24">
+  </footer>
 
     <p class="note">
       Example data links required by Strava’s guidelines:
