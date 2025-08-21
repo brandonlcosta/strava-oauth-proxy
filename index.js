@@ -119,6 +119,17 @@ app.post('/webhook', async (req, res) => {
     const evt = req.body || {};
     console.log('[WEBHOOK]', evt);
     inboxQ.push(evt);
+        if (body.object_type === 'activity') {
+      if (body.aspect_type === 'create') {
+        processNewActivity(body.object_id, body.owner_id);
+      } else if (body.aspect_type === 'update') {
+        processActivityUpdate(body); // <-- add this line
+      } else if (body.aspect_type === 'delete') {
+        // optional: mark as deleted or handle later with SafeSync
+        console.log('[DELETE] activity', body.object_id);
+      }
+    }
+
   } catch (err) {
     console.error('[WEBHOOK ERROR]', err);
     // still ACKed above to prevent retries
@@ -389,6 +400,89 @@ async function processNewActivity(objectId, ownerId) {
     console.error('[NEW ACT ERROR]', err?.response?.data || err.message || err);
   }
 }
+
+// Convert numeric column index to A1 letter(s) (1->A, 27->AA)
+function colToA1(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+// Find the row index (2-based, skipping header) for a given activity_id in "activities"
+async function findActivityRowIndex(activityId) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  // Read id column A (skip header)
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: 'activities!A2:A'
+  }).catch(() => ({ data: { values: [] } }));
+  const vals = resp.data.values || [];
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0]) === String(activityId)) {
+      return i + 2; // row number in sheet
+    }
+  }
+  return null;
+}
+
+// Update an entire row in activities (overwrite the row with mapped values)
+async function overwriteActivityRow(rowIndex, rowValues) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  const colCount = ACTIVITIES_HEADERS.length;
+  const endCol = colToA1(colCount);
+  const range = `activities!A${rowIndex}:${endCol}${rowIndex}`;
+  await sheets.spreadsheets.values.update({
+    auth: jwt,
+    spreadsheetId,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: { values: [rowValues] }
+  });
+}
+
+// Handle aspect_type === 'update'
+async function processActivityUpdate(evt) {
+  try {
+    const { object_id, owner_id } = evt;
+    await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
+
+    // 1) get athlete token
+    const { access_token, athlete_name } = await getAthleteTokenFromSheet(owner_id);
+    if (!access_token) {
+      console.warn('[UPDATE] no access_token for owner', owner_id);
+      return;
+    }
+
+    // 2) fetch current activity (include efforts if you want to refresh those too)
+    const act = await axios.get(
+      `https://www.strava.com/api/v3/activities/${object_id}?include_all_efforts=false`,
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    ).then(r => r.data);
+
+    // 3) map row in your schema
+    const row = mapActivityRow(athlete_name, owner_id, act);
+
+    // 4) locate row; if missing, append (maybe create occurred when service was asleep)
+    const rowIndex = await findActivityRowIndex(object_id);
+    if (!rowIndex) {
+      console.log('[UPDATE] activity not found, appending instead', object_id);
+      await appendRows('activities', [row]);
+      return;
+    }
+
+    // 5) overwrite existing row
+    await overwriteActivityRow(rowIndex, row);
+    console.log('[UPDATE] refreshed activity row', object_id, 'at row', rowIndex);
+  } catch (err) {
+    console.error('[UPDATE ERROR]', err?.response?.data || err.message || err);
+  }
+}
+
 
 // ---------- Start server ----------
 app.listen(port, () => {
