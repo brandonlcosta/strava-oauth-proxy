@@ -1,5 +1,5 @@
-// index.js — SacUltraCrew OAuth + Webhooks (Render)
-// -------------------------------------------------
+// index.js — SacUltraCrew OAuth + Webhooks (Render) with hard-delete
+// ------------------------------------------------------------------
 require('dotenv').config();
 
 const express = require('express');
@@ -20,7 +20,6 @@ app.use(express.urlencoded({ extended: true }));
 // ================================
 const inboxQ = [];
 let queueBusy = false;
-
 setInterval(drainQueue, 3000);
 
 async function drainQueue() {
@@ -30,7 +29,7 @@ async function drainQueue() {
     while (inboxQ.length) {
       const evt = inboxQ.shift();
 
-      // 1) log every event to inbox
+      // 1) Log every event to inbox
       await appendToSheet('inbox', [[
         new Date().toISOString(),
         evt.object_type || '',
@@ -40,15 +39,14 @@ async function drainQueue() {
         JSON.stringify(evt || {})
       ]]);
 
-      // 2) route by aspect
+      // 2) Route by type/aspect
       if (evt.object_type === 'activity') {
         if (evt.aspect_type === 'create') {
           await processNewActivity(evt.object_id, evt.owner_id);
         } else if (evt.aspect_type === 'update') {
           await processActivityUpdate(evt);
         } else if (evt.aspect_type === 'delete') {
-          // optional: mark deleted, or let a periodic SafeSync handle it
-          console.log('[DELETE]', evt.object_id);
+          await processActivityDelete(evt); // HARD DELETE
         }
       }
     }
@@ -145,20 +143,17 @@ app.get('/webhook', (req, res) => {
 // ================================
 app.post('/webhook', async (req, res) => {
   try {
-    // ACK immediately to stop Strava retries
-    res.sendStatus(200);
-
+    res.sendStatus(200); // ACK immediately
     const evt = req.body || {};
     console.log('[WEBHOOK]', evt);
     inboxQ.push(evt);
   } catch (err) {
     console.error('[WEBHOOK ERROR]', err);
-    // we already ACKed
   }
 });
 
 // ================================
-// Debug routes
+/* Debug */
 // ================================
 app.get('/debug/sheets-ping', async (_req, res) => {
   try {
@@ -201,6 +196,16 @@ async function getSheetsClient() {
   await jwt.authorize();
 
   return { sheets, jwt, spreadsheetId: process.env.GOOGLE_SHEET_ID };
+}
+
+function colToA1(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
 }
 
 async function ensureTabWithHeaders(tabName, headers) {
@@ -251,40 +256,6 @@ async function appendRows(tabName, rows) {
   });
 }
 
-// Upsert athlete row by athlete_id (keeps sheet tidy)
-async function upsertAthleteRow({ athlete_id, athlete_name, access_token, refresh_token, expires_at }) {
-  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
-  await ensureTabWithHeaders('athletes', ['athlete_id','athlete_name','access_token','refresh_token','expires_at']);
-
-  const resp = await sheets.spreadsheets.values.get({
-    auth: jwt,
-    spreadsheetId,
-    range: 'athletes!A2:E',
-  }).catch(() => ({ data: { values: [] } }));
-
-  const rows = resp.data.values || [];
-  let foundIndex = -1;
-  for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(athlete_id)) { foundIndex = i; break; }
-  }
-
-  if (foundIndex === -1) {
-    await appendRows('athletes', [[
-      athlete_id, athlete_name, access_token, refresh_token, expires_at
-    ]]);
-  } else {
-    const rowIndex = foundIndex + 2; // sheet row
-    await sheets.spreadsheets.values.update({
-      auth: jwt,
-      spreadsheetId,
-      range: `athletes!A${rowIndex}:E${rowIndex}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [[ athlete_id, athlete_name, access_token, refresh_token, expires_at ]] }
-    });
-  }
-}
-
-// Read first column (A) as Set of strings, skip header
 async function readColumnA(tabName) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
   const resp = await sheets.spreadsheets.values.get({
@@ -322,6 +293,38 @@ async function updateSingleCell(tabName, rowIndex1, colIndex0, value) {
   });
 }
 
+// Upsert athlete row by athlete_id (keeps sheet tidy)
+async function upsertAthleteRow({ athlete_id, athlete_name, access_token, refresh_token, expires_at }) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  await ensureTabWithHeaders('athletes', ['athlete_id','athlete_name','access_token','refresh_token','expires_at']);
+
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: 'athletes!A2:E',
+  }).catch(() => ({ data: { values: [] } }));
+
+  const rows = resp.data.values || [];
+  let foundIndex = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(athlete_id)) { foundIndex = i; break; }
+  }
+
+  if (foundIndex === -1) {
+    await appendRows('athletes', [[
+      athlete_id, athlete_name, access_token, refresh_token, expires_at
+    ]]);
+  } else {
+    const rowIndex = foundIndex + 2; // sheet row
+    await sheets.spreadsheets.values.update({
+      auth: jwt,
+      spreadsheetId,
+      range: `athletes!A${rowIndex}:E${rowIndex}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[ athlete_id, athlete_name, access_token, refresh_token, expires_at ]] }
+    });
+  }
+}
 
 // ================================
 // Auth helpers (refresh tokens)
@@ -547,7 +550,7 @@ async function processActivityUpdate(evt) {
     const { object_id, owner_id, updates = {} } = evt;
     await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
 
-    // Find the row for this activity; if not found, fetch and append once
+    // Ensure row exists; if not, fetch once
     let rowIndex = await findActivityRowIndex(object_id);
     if (!rowIndex) {
       console.log('[UPDATE] activity not found, calling processNewActivity first', object_id);
@@ -559,54 +562,32 @@ async function processActivityUpdate(evt) {
       }
     }
 
-    // 1) FAST PATH: apply known updates directly from webhook payload (no Strava fetch)
-    // Strava sends e.g. updates: { title: "New name" } for rename events
-    const hasDirectChange =
-      typeof updates.title !== 'undefined' ||
-      typeof updates.visibility !== 'undefined' ||
-      typeof updates.private !== 'undefined' || // older field
-      typeof updates.type !== 'undefined' ||
-      typeof updates.sport_type !== 'undefined';
+    // FAST PATH: apply webhook updates directly
+    const nameCol  = await getHeaderIndex('activities', 'name');
+    const visCol   = await getHeaderIndex('activities', 'visibility');
+    const sportCol = await getHeaderIndex('activities', 'sport_type');
 
-    if (hasDirectChange) {
-      // Map webhook fields -> our sheet columns
-      // activities headers: 'name' is the title column
-      const nameCol = await getHeaderIndex('activities', 'name');
-      const visCol  = await getHeaderIndex('activities', 'visibility');
-      const sportCol = await getHeaderIndex('activities', 'sport_type');
-
-      // Title change
-      if (typeof updates.title !== 'undefined' && nameCol >= 0) {
-        await updateSingleCell('activities', rowIndex, nameCol, updates.title);
-        console.log('[UPDATE] applied title from webhook for', object_id, '->', updates.title);
-      }
-
-      // Visibility change (Strava may send 'visibility' or 'private'; if private=true, set 'followers_only' or similar if you prefer)
-      if (typeof updates.visibility !== 'undefined' && visCol >= 0) {
-        await updateSingleCell('activities', rowIndex, visCol, updates.visibility);
-        console.log('[UPDATE] applied visibility from webhook for', object_id, '->', updates.visibility);
-      } else if (typeof updates.private !== 'undefined' && visCol >= 0) {
-        // mirror older "private" into visibility, choose a convention
-        const v = updates.private ? 'only_me' : 'everyone';
-        await updateSingleCell('activities', rowIndex, visCol, v);
-        console.log('[UPDATE] applied private->visibility for', object_id, '->', v);
-      }
-
-      // Sport type change
-      if (typeof updates.type !== 'undefined' && sportCol >= 0) {
-        await updateSingleCell('activities', rowIndex, sportCol, updates.type);
-        console.log('[UPDATE] applied type from webhook for', object_id, '->', updates.type);
-      } else if (typeof updates.sport_type !== 'undefined' && sportCol >= 0) {
-        await updateSingleCell('activities', rowIndex, sportCol, updates.sport_type);
-        console.log('[UPDATE] applied sport_type from webhook for', object_id, '->', updates.sport_type);
-      }
-
-      // Done with direct changes; you can bail here if you want.
-      // If you ALSO want to refresh other fields from Strava, fall through to the fetch below.
+    if (typeof updates.title !== 'undefined' && nameCol >= 0) {
+      await updateSingleCell('activities', rowIndex, nameCol, updates.title);
+      console.log('[UPDATE] applied title from webhook for', object_id, '->', updates.title);
+    }
+    if (typeof updates.visibility !== 'undefined' && visCol >= 0) {
+      await updateSingleCell('activities', rowIndex, visCol, updates.visibility);
+      console.log('[UPDATE] applied visibility from webhook for', object_id, '->', updates.visibility);
+    } else if (typeof updates.private !== 'undefined' && visCol >= 0) {
+      const v = updates.private ? 'only_me' : 'everyone';
+      await updateSingleCell('activities', rowIndex, visCol, v);
+      console.log('[UPDATE] applied private->visibility for', object_id, '->', v);
+    }
+    if (typeof updates.type !== 'undefined' && sportCol >= 0) {
+      await updateSingleCell('activities', rowIndex, sportCol, updates.type);
+      console.log('[UPDATE] applied type from webhook for', object_id, '->', updates.type);
+    } else if (typeof updates.sport_type !== 'undefined' && sportCol >= 0) {
+      await updateSingleCell('activities', rowIndex, sportCol, updates.sport_type);
+      console.log('[UPDATE] applied sport_type from webhook for', object_id, '->', updates.sport_type);
     }
 
-    // 2) SLOW PATH (optional): fetch latest and overwrite the row
-    // This keeps the row fully in sync when changes aren't provided in 'updates'.
+    // SLOW PATH: refresh full row to keep other fields fresh
     const { access_token, athlete_name } = await ensureFreshAccessToken(owner_id);
     if (!access_token) {
       console.warn('[UPDATE] no usable access_token for owner', owner_id);
@@ -627,20 +608,41 @@ async function processActivityUpdate(evt) {
   }
 }
 
+// HARD DELETE: remove rows from activities + segment_efforts
+async function processActivityDelete(evt) {
+  try {
+    const { object_id } = evt;
+    const idStr = String(object_id);
 
-// ================================
-// Sheet row locate/overwrite
-// ================================
-function colToA1(n) {
-  let s = '';
-  while (n > 0) {
-    const m = (n - 1) % 26;
-    s = String.fromCharCode(65 + m) + s;
-    n = Math.floor((n - 1) / 26);
+    await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
+    await ensureTabWithHeaders('segment_efforts', EFFORTS_HEADERS);
+
+    // 1) Delete activity rows
+    const activityRows = await findRowIndicesByFirstColumn('activities', idStr);
+    if (activityRows.length) {
+      await deleteRows('activities', activityRows);
+      console.log('[DELETE] removed activity rows for', idStr, activityRows);
+    } else {
+      console.log('[DELETE] no activities rows found for', idStr);
+    }
+
+    // 2) Delete all related segment_efforts rows
+    const effortRows = await findRowIndicesByFirstColumn('segment_efforts', idStr);
+    if (effortRows.length) {
+      await deleteRows('segment_efforts', effortRows);
+      console.log('[DELETE] removed segment_efforts rows for', idStr, effortRows.length);
+    } else {
+      console.log('[DELETE] no segment_efforts rows found for', idStr);
+    }
+
+  } catch (err) {
+    console.error('[DELETE ERROR]', err?.response?.data || err.message || err);
   }
-  return s;
 }
 
+// ================================
+// Sheet row locate/overwrite/delete
+// ================================
 async function findActivityRowIndex(activityId) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
   const resp = await sheets.spreadsheets.values.get({
@@ -668,6 +670,60 @@ async function overwriteActivityRow(rowIndex, rowValues) {
     valueInputOption: 'RAW',
     requestBody: { values: [rowValues] }
   });
+}
+
+// Return ALL row indices (1-based) in tab where column A equals value (skips header)
+async function findRowIndicesByFirstColumn(tabName, aValue) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: `${tabName}!A2:A`
+  }).catch(() => ({ data: { values: [] } }));
+
+  const rows = resp.data.values || [];
+  const matches = [];
+  const target = String(aValue);
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === target) {
+      matches.push(i + 2); // actual sheet row (header is row 1)
+    }
+  }
+  return matches;
+}
+
+// Batch delete rows by 1-based indices (descending to avoid index shift)
+async function deleteRows(tabName, rowIndices1Based) {
+  if (!rowIndices1Based.length) return;
+
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  // Need the sheetId (gid) for DeleteDimensionRequest
+  const meta = await sheets.spreadsheets.get({ auth: jwt, spreadsheetId });
+  const theSheet = (meta.data.sheets || []).find(s => s.properties.title === tabName);
+  if (!theSheet) return;
+  const sheetId = theSheet.properties.sheetId;
+
+  // Sort descending so earlier deletes don't shift later positions
+  const sorted = [...rowIndices1Based].sort((a,b) => b - a);
+
+  const requests = sorted.map(rowIndex => ({
+    deleteDimension: {
+      range: {
+        sheetId,
+        dimension: 'ROWS',
+        startIndex: rowIndex - 1, // 0-based, inclusive
+        endIndex: rowIndex     // 0-based, exclusive
+      }
+    }
+  }));
+
+  await sheets.spreadsheets.batchUpdate({
+    auth: jwt,
+    spreadsheetId,
+    requestBody: { requests }
+  });
+
+  console.log(`[SHEETS] deleted ${sorted.length} row(s) from ${tabName}`);
 }
 
 // ================================
