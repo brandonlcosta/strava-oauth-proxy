@@ -296,6 +296,33 @@ async function readColumnA(tabName) {
   return new Set(rows);
 }
 
+// Read header row and return index (0-based) of a header name
+async function getHeaderIndex(tabName, headerName) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: `${tabName}!1:1`
+  });
+  const headers = (resp.data.values && resp.data.values[0]) || [];
+  return headers.findIndex(h => String(h).trim() === String(headerName).trim());
+}
+
+// Update a single cell by row index (1-based) and col index (0-based)
+async function updateSingleCell(tabName, rowIndex1, colIndex0, value) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  const colA1 = colToA1(colIndex0 + 1);
+  const range = `${tabName}!${colA1}${rowIndex1}:${colA1}${rowIndex1}`;
+  await sheets.spreadsheets.values.update({
+    auth: jwt,
+    spreadsheetId,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[value]] }
+  });
+}
+
+
 // ================================
 // Auth helpers (refresh tokens)
 // ================================
@@ -517,9 +544,69 @@ async function processNewActivity(objectId, ownerId) {
 
 async function processActivityUpdate(evt) {
   try {
-    const { object_id, owner_id } = evt;
+    const { object_id, owner_id, updates = {} } = evt;
     await ensureTabWithHeaders('activities', ACTIVITIES_HEADERS);
 
+    // Find the row for this activity; if not found, fetch and append once
+    let rowIndex = await findActivityRowIndex(object_id);
+    if (!rowIndex) {
+      console.log('[UPDATE] activity not found, calling processNewActivity first', object_id);
+      await processNewActivity(object_id, owner_id);
+      rowIndex = await findActivityRowIndex(object_id);
+      if (!rowIndex) {
+        console.warn('[UPDATE] still no row after fetch, giving up for now', object_id);
+        return;
+      }
+    }
+
+    // 1) FAST PATH: apply known updates directly from webhook payload (no Strava fetch)
+    // Strava sends e.g. updates: { title: "New name" } for rename events
+    const hasDirectChange =
+      typeof updates.title !== 'undefined' ||
+      typeof updates.visibility !== 'undefined' ||
+      typeof updates.private !== 'undefined' || // older field
+      typeof updates.type !== 'undefined' ||
+      typeof updates.sport_type !== 'undefined';
+
+    if (hasDirectChange) {
+      // Map webhook fields -> our sheet columns
+      // activities headers: 'name' is the title column
+      const nameCol = await getHeaderIndex('activities', 'name');
+      const visCol  = await getHeaderIndex('activities', 'visibility');
+      const sportCol = await getHeaderIndex('activities', 'sport_type');
+
+      // Title change
+      if (typeof updates.title !== 'undefined' && nameCol >= 0) {
+        await updateSingleCell('activities', rowIndex, nameCol, updates.title);
+        console.log('[UPDATE] applied title from webhook for', object_id, '->', updates.title);
+      }
+
+      // Visibility change (Strava may send 'visibility' or 'private'; if private=true, set 'followers_only' or similar if you prefer)
+      if (typeof updates.visibility !== 'undefined' && visCol >= 0) {
+        await updateSingleCell('activities', rowIndex, visCol, updates.visibility);
+        console.log('[UPDATE] applied visibility from webhook for', object_id, '->', updates.visibility);
+      } else if (typeof updates.private !== 'undefined' && visCol >= 0) {
+        // mirror older "private" into visibility, choose a convention
+        const v = updates.private ? 'only_me' : 'everyone';
+        await updateSingleCell('activities', rowIndex, visCol, v);
+        console.log('[UPDATE] applied private->visibility for', object_id, '->', v);
+      }
+
+      // Sport type change
+      if (typeof updates.type !== 'undefined' && sportCol >= 0) {
+        await updateSingleCell('activities', rowIndex, sportCol, updates.type);
+        console.log('[UPDATE] applied type from webhook for', object_id, '->', updates.type);
+      } else if (typeof updates.sport_type !== 'undefined' && sportCol >= 0) {
+        await updateSingleCell('activities', rowIndex, sportCol, updates.sport_type);
+        console.log('[UPDATE] applied sport_type from webhook for', object_id, '->', updates.sport_type);
+      }
+
+      // Done with direct changes; you can bail here if you want.
+      // If you ALSO want to refresh other fields from Strava, fall through to the fetch below.
+    }
+
+    // 2) SLOW PATH (optional): fetch latest and overwrite the row
+    // This keeps the row fully in sync when changes aren't provided in 'updates'.
     const { access_token, athlete_name } = await ensureFreshAccessToken(owner_id);
     if (!access_token) {
       console.warn('[UPDATE] no usable access_token for owner', owner_id);
@@ -531,21 +618,15 @@ async function processActivityUpdate(evt) {
       { headers: { Authorization: `Bearer ${access_token}` } }
     ).then(r => r.data);
 
-    const row = mapActivityRow(athlete_name, owner_id, act);
-    const rowIndex = await findActivityRowIndex(object_id);
+    const fullRow = mapActivityRow(athlete_name, owner_id, act);
+    await overwriteActivityRow(rowIndex, fullRow);
+    console.log('[UPDATE] refreshed full activity row for', object_id, 'at row', rowIndex);
 
-    if (!rowIndex) {
-      console.log('[UPDATE] activity not found, appending instead', object_id);
-      await appendRows('activities', [row]);
-      return;
-    }
-
-    await overwriteActivityRow(rowIndex, row);
-    console.log('[UPDATE] refreshed activity row', object_id, 'at row', rowIndex);
   } catch (err) {
     console.error('[UPDATE ERROR]', err?.response?.data || err.message || err);
   }
 }
+
 
 // ================================
 // Sheet row locate/overwrite
