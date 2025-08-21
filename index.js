@@ -210,10 +210,6 @@ app.get('/join-callback', async (req, res) => {
             max-width: 200px;
             margin: 0 auto 16px;
             }
-            .skull {
-            font-size: 64px;
-            margin-bottom: 16px;
-            }
             h1 {
             font-size: 28px;
             margin: 10px 0;
