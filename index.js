@@ -267,6 +267,56 @@ async function readColumnA(tabName) {
   return new Set(rows);
 }
 
+// Get 0-based header index by header text (exact match)
+async function getHeaderIndex(tabName, headerName) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: `${tabName}!1:1`
+  });
+  const headers = (resp.data.values && resp.data.values[0]) || [];
+  return headers.findIndex(h => String(h).trim() === String(headerName).trim());
+}
+
+// Tolerant equality: match "15538647680" vs 15538647680 vs "1.553864768e+10"
+function idsEqual(a, b) {
+  if (a == null || b == null) return false;
+  const sa = String(a).trim();
+  const sb = String(b).trim();
+  if (sa === sb) return true;
+  const na = Number(sa), nb = Number(sb);
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na === nb;
+  return false;
+}
+
+// Find ALL row indices (1-based) in a tab where the cell in the given header column matches value
+async function findRowIndicesByHeader(tabName, headerName, matchValue) {
+  const { sheets, jwt, spreadsheetId } = await getSheetsClient();
+  const colIdx0 = await getHeaderIndex(tabName, headerName);
+  if (colIdx0 < 0) return [];
+
+  // Read a wide range (A:ZZ) to ensure we pull entire rows, then check that column locally
+  const resp = await sheets.spreadsheets.values.get({
+    auth: jwt,
+    spreadsheetId,
+    range: `${tabName}!A2:ZZ`, // skip header row
+    valueRenderOption: 'FORMATTED_VALUE', // returns strings as displayed (might be scientific)
+    dateTimeRenderOption: 'FORMATTED_STRING'
+  }).catch(() => ({ data: { values: [] } }));
+
+  const rows = resp.data.values || [];
+  const matches = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const cell = row[colIdx0];
+    if (idsEqual(cell, matchValue)) {
+      matches.push(i + 2); // 1-based row index (header is row 1)
+    }
+  }
+  return matches;
+}
+
 // Read header row and return index (0-based) of a header name
 async function getHeaderIndex(tabName, headerName) {
   const { sheets, jwt, spreadsheetId } = await getSheetsClient();
@@ -618,7 +668,7 @@ async function processActivityDelete(evt) {
     await ensureTabWithHeaders('segment_efforts', EFFORTS_HEADERS);
 
     // 1) Delete activity rows
-    const activityRows = await findRowIndicesByFirstColumn('activities', idStr);
+    const activityRows = await findRowIndicesByHeader('activities', 'activity_id', idStr);
     if (activityRows.length) {
       await deleteRows('activities', activityRows);
       console.log('[DELETE] removed activity rows for', idStr, activityRows);
@@ -627,7 +677,7 @@ async function processActivityDelete(evt) {
     }
 
     // 2) Delete all related segment_efforts rows
-    const effortRows = await findRowIndicesByFirstColumn('segment_efforts', idStr);
+    const effortRows   = await findRowIndicesByHeader('segment_efforts', 'activity_id', idStr);
     if (effortRows.length) {
       await deleteRows('segment_efforts', effortRows);
       console.log('[DELETE] removed segment_efforts rows for', idStr, effortRows.length);
