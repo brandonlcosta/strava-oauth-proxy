@@ -160,7 +160,7 @@ app.get('/join', (_req, res) => {
 
     <!-- Strava connect button -->
     <a class="strava-connect" 
-       href="https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback&scope=read,activity:read&approval_prompt=auto">
+       href="https://www.strava.com/oauth/authorize?client_id=173198&response_type=code&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback&scope=read,activity:read&approval_prompt=auto">
       <img 
         src="/assets/strava/btn_connect_with_strava_orange@1x.png" 
         srcset="/assets/strava/btn_connect_with_strava_orange@1x.png 1x,
