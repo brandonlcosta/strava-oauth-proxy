@@ -371,15 +371,21 @@ app.get("/leaderboard", (req, res) => {
       <meta charset="UTF-8">
       <title>SUC Leaderboard</title>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js"></script>
-        <style>
+      <style>
         body { margin:0; }
         iframe { 
-            width:100%; 
-            border:none; 
-            height:1200px;   /* Start big so no tiny box */
-            min-height:100vh;
+          width:100%; 
+          border:none; 
+          height:900px;   /* Default desktop height */
         }
-        </style>
+
+        /* On tablets/phones (<768px wide) */
+        @media (max-width: 768px) {
+          iframe {
+            height: 1500px;  /* Taller for mobile */
+          }
+        }
+      </style>
     </head>
     <body>
       <iframe 
@@ -401,6 +407,7 @@ app.get("/leaderboard", (req, res) => {
 
   res.send(html);
 });
+
 
 // ===== Start server =====
 const PORT = process.env.PORT || 3000;
