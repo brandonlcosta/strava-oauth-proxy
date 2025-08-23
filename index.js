@@ -416,7 +416,7 @@ app.get("/leaderboard", (req, res) => {
           margin: 0;
           text-align: center;
           color: #333;
-          padding-bottom: 50px;
+          padding-bottom: 50px; /* <-- Bottom buffer */
         }
         iframe {
           width: 100%;
@@ -439,20 +439,21 @@ app.get("/leaderboard", (req, res) => {
           margin: 20px 0;
         }
         a {
-          color: #FC5200; /* Strava orange */
+          color: #FC5200;
           text-decoration: underline;
         }
       </style>
     </head>
     <body>
 
+      <!-- Looker Studio Report -->
       <iframe
         id="lookerFrame"
         src="${reportUrl}"
         allowfullscreen>
       </iframe>
 
-      <!-- Connect with Strava Section -->
+      <!-- Strava Connect Section -->
       <a href="https://www.strava.com/oauth/authorize?client_id=173198&response_type=code&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback&scope=read,activity:read&approval_prompt=auto">
         <img
           src="https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@1x.png"
@@ -475,6 +476,7 @@ app.get("/leaderboard", (req, res) => {
 
   res.status(200).send(html);
 });
+
 
 
 
