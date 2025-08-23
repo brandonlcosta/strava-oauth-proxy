@@ -371,10 +371,15 @@ app.get("/leaderboard", (req, res) => {
       <meta charset="UTF-8">
       <title>SUC Leaderboard</title>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js"></script>
-      <style>
+        <style>
         body { margin:0; }
-        iframe { width:100%; border:none; min-height:100vh; }
-      </style>
+        iframe { 
+            width:100%; 
+            border:none; 
+            height:1200px;   /* Start big so no tiny box */
+            min-height:100vh;
+        }
+        </style>
     </head>
     <body>
       <iframe 
