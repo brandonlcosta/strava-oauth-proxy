@@ -360,6 +360,28 @@ app.get("/leaderboard", (req, res) => {
         src="${reportUrl}"
         allowfullscreen>
       </iframe>
+
+    
+      
+            <footer class="powered-by">
+        <img
+            src="https://strava-oauth-proxy.onrender.com/assets/strava/powered_by_strava_orange@2x.png"
+            srcset="https://strava-oauth-proxy.onrender.com/assets/strava/powered_by_strava_orange@2x.png 2x"
+            alt="Powered by Strava"
+            height="24">
+        </footer>
+
+        <style>
+        .powered-by {
+            text-align: center;
+            margin-top: 40px;
+        }
+        .powered-by img {
+            display: inline-block;
+        }
+        </style>
+
+
     </body>
     </html>
   `;
