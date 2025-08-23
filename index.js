@@ -430,7 +430,7 @@ app.get("/leaderboard", (req, res) => {
         }
         @media (max-width: 768px) {
           iframe {
-            height: 1500px;
+            height: 3000px;
           }
         }
         .consent {
