@@ -419,6 +419,11 @@ app.get("/leaderboard", (req, res) => {
           padding-bottom: 20px;
         }
         iframe {
+            width: 100%;
+            min-height: 100vh;
+            border: none;
+            }
+     {
           width: 100%;
           height: 1000px;
           border: none;
