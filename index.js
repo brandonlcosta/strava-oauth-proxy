@@ -328,8 +328,45 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get("/leaderboard", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "wrapper.html"));
+  const reportUrl = req.query.url;
+
+  if (!reportUrl) {
+    return res.status(400).send("Missing ?url parameter. Example: /leaderboard?url=https://lookerstudio.google.com/embed/reporting/...");
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>SUC Leaderboard</title>
+      <style>
+        body { margin: 0; }
+        iframe {
+          width: 100%;
+          height: 1000px; /* Adjust for desktop */
+          border: none;
+        }
+        @media (max-width: 768px) {
+          iframe {
+            height: 1500px; /* Taller for mobile */
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <iframe
+        id="lookerFrame"
+        src="${reportUrl}"
+        allowfullscreen>
+      </iframe>
+    </body>
+    </html>
+  `;
+
+  res.status(200).send(html);
 });
+
 
 
 // ================================
