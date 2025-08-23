@@ -416,6 +416,7 @@ app.get("/leaderboard", (req, res) => {
           margin: 0;
           text-align: center;
           color: #333;
+          padding-bottom: 50px;
         }
         iframe {
           width: 100%;
