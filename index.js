@@ -360,27 +360,7 @@ app.get("/leaderboard", (req, res) => {
         src="${reportUrl}"
         allowfullscreen>
       </iframe>
-
-    
       
-            <footer class="powered-by">
-        <img
-            src="https://strava-oauth-proxy.onrender.com/assets/strava/powered_by_strava_orange@2x.png"
-            srcset="https://strava-oauth-proxy.onrender.com/assets/strava/powered_by_strava_orange@2x.png 2x"
-            alt="Powered by Strava"
-            height="24">
-        </footer>
-
-        <style>
-        .powered-by {
-            text-align: center;
-            margin-top: 40px;
-        }
-        .powered-by img {
-            display: inline-block;
-        }
-        </style>
-
 
     </body>
     </html>
@@ -429,43 +409,72 @@ app.get("/leaderboard", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <title>SUC Leaderboard</title>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js"></script>
+      <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
       <style>
-        body { margin:0; }
-        iframe { 
-          width:100%; 
-          border:none; 
-          height:900px;   /* Default desktop height */
+        body {
+          font-family: 'Roboto', sans-serif;
+          margin: 0;
+          text-align: center;
+          color: #333;
         }
-
-        /* On tablets/phones (<768px wide) */
+        iframe {
+          width: 100%;
+          height: 1000px;
+          border: none;
+        }
         @media (max-width: 768px) {
           iframe {
-            height: 1500px;  /* Taller for mobile */
+            height: 1500px;
           }
+        }
+        .consent {
+          max-width: 600px;
+          margin: 20px auto;
+          font-size: 14px;
+          line-height: 1.5;
+          color: #444;
+        }
+        a img {
+          margin: 20px 0;
+        }
+        a {
+          color: #FC5200; /* Strava orange */
+          text-decoration: underline;
         }
       </style>
     </head>
     <body>
-      <iframe 
+
+      <iframe
         id="lookerFrame"
         src="${reportUrl}"
         allowfullscreen>
       </iframe>
 
-      <script>
-        iFrameResize({
-          log: false,
-          heightCalculationMethod: 'max',
-          checkOrigin: false
-        }, '#lookerFrame');
-      </script>
+      <!-- Connect with Strava Section -->
+      <a href="https://www.strava.com/oauth/authorize?client_id=173198&response_type=code&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback&scope=read,activity:read&approval_prompt=auto">
+        <img
+          src="https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@1x.png"
+          srcset="https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@1x.png 1x,
+                  https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@2x.png 2x"
+          alt="Connect with Strava"
+          height="48">
+      </a>
+
+      <p class="consent">
+        By connecting, you agree to share your public Strava activity data with SUC Leaderboard 
+        for scoring (distance, time, elevation, and watched segment efforts). You can disconnect 
+        anytime in Strava or request deletion. See our 
+        <a href="https://sacultracrew.com/leaderboard/privacy">Privacy Policy</a>.
+      </p>
+
     </body>
     </html>
   `;
 
-  res.send(html);
+  res.status(200).send(html);
 });
+
 
 
 // ===== Start server =====
