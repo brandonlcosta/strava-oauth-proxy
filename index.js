@@ -1000,15 +1000,8 @@ async function deleteRows(tabName, rowIndices1Based) {
   });
 
   console.log(`[SHEETS] deleted ${sorted.length} row(s) from ${tabName}`);
-}
-
-// ================================
-// Boot
-// ================================
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
 
 
   
-});
+};
 
