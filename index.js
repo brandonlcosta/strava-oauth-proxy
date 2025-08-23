@@ -357,6 +357,52 @@ app.get('/debug/env', (_req, res) => {
   });
 });
 
+app.get("/leaderboard", (req, res) => {
+  const reportUrl = req.query.url;
+
+  if (!reportUrl) {
+    return res.status(400).send("Missing ?url parameter. Example: /leaderboard?url=https://lookerstudio.google.com/embed/reporting/...");
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>SUC Leaderboard</title>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js"></script>
+      <style>
+        body { margin:0; }
+        iframe { width:100%; border:none; min-height:100vh; }
+      </style>
+    </head>
+    <body>
+      <iframe 
+        id="lookerFrame"
+        src="${reportUrl}"
+        allowfullscreen>
+      </iframe>
+
+      <script>
+        iFrameResize({
+          log: false,
+          heightCalculationMethod: 'max',
+          checkOrigin: false
+        }, '#lookerFrame');
+      </script>
+    </body>
+    </html>
+  `;
+
+  res.send(html);
+});
+
+// ===== Start server =====
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("✅ Server running on port " + PORT);
+});
+
 // ================================
 // Google Sheets client + helpers
 // ================================
