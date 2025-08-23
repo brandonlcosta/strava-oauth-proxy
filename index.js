@@ -232,6 +232,8 @@ app.get('/join-callback', async (req, res) => {
       expires_at
     });
 
+    
+
 // --- SUCCESS PAGE (Roboto + SUC Logo + skull + Powered by Strava) ---
     const html = `<!DOCTYPE html>
         <html lang="en">
@@ -324,6 +326,11 @@ app.post('/webhook', async (req, res) => {
     console.error('[WEBHOOK ERROR]', err);
   }
 });
+
+app.get("/leaderboard", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "wrapper.html"));
+});
+
 
 // ================================
 // Debug
@@ -942,4 +949,8 @@ async function deleteRows(tabName, rowIndices1Based) {
 // ================================
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
+
+
+  
 });
+
