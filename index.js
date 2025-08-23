@@ -451,32 +451,8 @@ app.get("/leaderboard", (req, res) => {
     </head>
     <body>
 
-      <!-- Strava Connect Section (now at the top) -->
-      <!-- Strava Connect Section -->
-<a href="https://www.strava.com/oauth/authorize?client_id=173198&response_type=code&redirect_uri=https%3A%2F%2Fstrava-oauth-proxy.onrender.com%2Fjoin-callback&scope=read,activity:read&approval_prompt=auto">
-  <img
-    src="https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@1x.png"
-    srcset="https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@1x.png 1x,
-            https://strava-oauth-proxy.onrender.com/assets/strava/btn_connect_with_strava_orange@2x.png 2x"
-    alt="Connect with Strava"
-    height="48">
-</a>
-
-<p class="consent">
-  By connecting, you agree to share your public Strava activity data with SUC Leaderboard 
-  for scoring (distance, time, elevation, and watched segment efforts). You can disconnect 
-  anytime in Strava or request deletion. See our 
-  <a href="https://sacultracrew.com/leaderboard/privacy">Privacy Policy</a>.
-</p>
-
-<!-- Powered by Strava badge -->
-<a href="https://www.strava.com" target="_blank" rel="noopener">
-  <img 
-    src="https://developers.strava.com/assets/powered_by_strava.png" 
-    alt="Powered by Strava" 
-    style="height: 30px; margin: 10px auto;">
-</a>
-
+    
+    
 
       <!-- Looker Studio Report -->
       <iframe
