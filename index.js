@@ -400,7 +400,11 @@ app.get("/leaderboard", (req, res) => {
   const reportUrl = req.query.url;
 
   if (!reportUrl) {
-    return res.status(400).send("Missing ?url parameter. Example: /leaderboard?url=https://lookerstudio.google.com/embed/reporting/...");
+    return res
+      .status(400)
+      .send(
+        "Missing ?url parameter. Example: /leaderboard?url=https://lookerstudio.google.com/embed/reporting/..."
+      );
   }
 
   const html = `
@@ -408,31 +412,46 @@ app.get("/leaderboard", (req, res) => {
     <html lang="en">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
       <title>SUC Leaderboard</title>
       <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
       <style>
         body {
           font-family: 'Roboto', sans-serif;
           margin: 0;
+          padding: 0;
           text-align: center;
           color: #333;
-          padding-bottom: 20px;
+          background: #fff;
         }
+
         iframe {
-            width: 100%;
-            min-height: 100vh;
-            border: none;
-            }
-     {
           width: 100%;
-          height: 1000px;
           border: none;
+          min-height: 100vh; /* fallback */
         }
-        @media (max-width: 768px) {
+
+        /* Desktop */
+        @media (min-width: 1024px) {
           iframe {
-            height: 3000px;
+            height: 1200px;
           }
         }
+
+        /* Tablet */
+        @media (min-width: 768px) and (max-width: 1023px) {
+          iframe {
+            height: 1000px;
+          }
+        }
+
+        /* iPhone / small mobile */
+        @media (max-width: 767px) {
+          iframe {
+            height: 2000px; /* taller so mobile users can scroll */
+          }
+        }
+
         .consent {
           max-width: 600px;
           margin: 20px auto;
@@ -440,9 +459,12 @@ app.get("/leaderboard", (req, res) => {
           line-height: 1.5;
           color: #444;
         }
+
         a img {
           margin: 20px 0;
+          max-width: 150px;
         }
+
         a {
           color: #FC5200;
           text-decoration: underline;
@@ -450,17 +472,11 @@ app.get("/leaderboard", (req, res) => {
       </style>
     </head>
     <body>
-
-    
-    
-
-      <!-- Looker Studio Report -->
       <iframe
         id="lookerFrame"
         src="${reportUrl}"
         allowfullscreen>
       </iframe>
-
     </body>
     </html>
   `;
